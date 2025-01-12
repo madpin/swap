@@ -1,0 +1,14 @@
+google-auth
+google-api-python-client
+pytz
+aiohttp
+google-auth-oauthlib
+pytest
+fastapi
+uvicorn
+apscheduler
+python-telegram-bot
+pydantic
+pydantic-settings
+SQLAlchemy
+sqlmodel

@@ -169,3 +169,8 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+gcal_service_account.json
+tasks.db
+codes.md
+*.bin
+swap.db
