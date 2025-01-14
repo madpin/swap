@@ -8,6 +8,9 @@ from swap.models.calendar import Calendar, Event  # Then Calendar and Event
 
 
 def create_tables():
+    # Drop all existing tables first
+    SQLModel.metadata.drop_all(engine)
+    # Create all tables
     SQLModel.metadata.create_all(engine)
 
 

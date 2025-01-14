@@ -77,15 +77,29 @@ class TelegramSettings(BaseSettings):
         env_prefix = "tg_"
 
 
+class RotaSettings(BaseSettings):
+    """Settings for Rota integration."""
+
+    # spreadsheet_id: str = Field(
+    #     "1MqJwH59lHhE6q0kmFNkQZzpteRLTQBlX2vKhEhVltHQ", env="SPREADSHEET_ID"
+    # )
+    # range_name: str = Field("Combined Rota!A:M", env="RANGE_NAME")
+    spreadsheet_id: str = Field(
+        "1shLCkqxoZSJKLq2f4yhAG71iCHHJ3tlnr4bV9zAFZ3g", env="SPREADSHEET_ID"
+    )
+    range_name: str = Field("Sheet1!A:M", env="RANGE_NAME")
+
+
 class Settings(BaseSettings):
     """Aggregated settings for the entire application."""
-    
+
     system: SystemSettings = SystemSettings()
     postgres: Optional[PostgresSettings] = None
     sqlite: Optional[SQLiteSettings] = SQLiteSettings()
+    rota: RotaSettings = RotaSettings()
     # gcal: GoogleCalendarSettings = GoogleCalendarSettings()
     # telegram: TelegramSettings = TelegramSettings()
-    
+
     task_store_url = property(lambda self: self.system.task_store_url)
 
     @property
@@ -99,6 +113,6 @@ class Settings(BaseSettings):
     @property
     def scheduler_timezone(self):
         return self.system.scheduler_timezone
-    
+
 
 settings = Settings()

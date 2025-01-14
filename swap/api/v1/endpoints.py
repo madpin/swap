@@ -1,10 +1,13 @@
-from fastapi import APIRouter, HTTPException, logger
+from fastapi import APIRouter, HTTPException
+from swap.db_init import create_tables
+from swap.utils.logger import logger
 from swap.scheduler.scheduler import schedule_notification
 from swap.models.notification import NotificationRequest
 
 from swap.api.v1.scheduler import router as scheduler_router
 from swap.services.rota_parser import RotaParser
 from swap.api.v1.calendar import router as calendar_router
+from swap.core.rota2db import rota_to_db
 
 # Create the main router
 router = APIRouter()
@@ -16,7 +19,6 @@ router.include_router(scheduler_router)
 router.include_router(calendar_router)
 
 
-
 @router.post("/schedule-notification")
 async def schedule_notification_endpoint(request: NotificationRequest):
     try:
@@ -25,6 +27,12 @@ async def schedule_notification_endpoint(request: NotificationRequest):
         return {"status": "Notification scheduled successfully"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/db_init")
+async def db_init():
+    create_tables()
+    return {"status": "Database initialized successfully"}
 
 
 @router.get("/rota")
@@ -40,3 +48,8 @@ async def get_rota():
     parsed_rota = rota_parser.parse_rota()
     logger.info(f"Parsed Rota: {parsed_rota}")
     return parsed_rota
+
+
+@router.get("/rota2db")
+async def rota_to_db_endpoint():
+    await rota_to_db()

@@ -8,6 +8,8 @@ class Calendar(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     google_calendar_id: str = Field(index=True)
     name: str
+    key: str
+    main_email: Optional[str] = None
     description: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
@@ -17,6 +19,7 @@ class Calendar(SQLModel, table=True):
 class Event(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     google_event_id: str = Field(index=True)
+    google_synced: bool = Field(default=False)
     rota_id: Optional[int] = Field(default=None, foreign_key="rota.id")
     calendar_id: int = Field(foreign_key="calendar.id")
     title: str
