@@ -7,7 +7,7 @@ from swap.models.notification import NotificationRequest
 from swap.api.v1.scheduler import router as scheduler_router
 from swap.services.rota_parser import RotaParser
 from swap.api.v1.calendar import router as calendar_router
-from swap.core.rota2db import rota_to_db
+from swap.core.raw2rota import rota_spread_to_raw_db
 
 # Create the main router
 router = APIRouter()
@@ -31,12 +31,16 @@ async def schedule_notification_endpoint(request: NotificationRequest):
 
 @router.post("/db_init")
 async def db_init():
+    """
+    This endpoint is used to initialize the database
+    """
     create_tables()
     return {"status": "Database initialized successfully"}
 
 
 @router.get("/rota")
 async def get_rota():
+    """This endpoint is used to parse the rota spreadsheet and return the parsed data"""
     spreadsheet_id = "1MqJwH59lHhE6q0kmFNkQZzpteRLTQBlX2vKhEhVltHQ"
     range_name = "Combined Rota!A:M"
     # return RotaParser
@@ -50,6 +54,10 @@ async def get_rota():
     return parsed_rota
 
 
-@router.get("/rota2db")
-async def rota_to_db_endpoint():
-    await rota_to_db()
+@router.get("/raw2rota")
+async def raw_to_rota_endpoint():
+    """
+    This endpoint is used to parse the rota spreadsheet and store the data in the database
+    """
+    result = rota_spread_to_raw_db()
+    return result

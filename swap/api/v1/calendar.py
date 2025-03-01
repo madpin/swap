@@ -10,6 +10,7 @@ router = APIRouter(prefix="/calendar", tags=["calendar"])
 
 @router.post("/", response_model=Calendar, status_code=201)
 def create_calendar(calendar: Calendar, session: Session = Depends(get_db)):
+    """Create a new calendar"""
     session.add(calendar)
     session.commit()
     session.refresh(calendar)
@@ -18,12 +19,14 @@ def create_calendar(calendar: Calendar, session: Session = Depends(get_db)):
 
 @router.get("/", response_model=List[Calendar])
 def read_calendars(session: Session = Depends(get_db)):
+    """Get all calendars"""
     calendars = session.exec(select(Calendar)).all()
     return calendars
 
 
 @router.get("/{calendar_id}", response_model=Calendar)
 def read_calendar(calendar_id: int, session: Session = Depends(get_db)):
+    """Get a single calendar"""
     calendar = session.get(Calendar, calendar_id)
     if not calendar:
         raise HTTPException(status_code=404, detail="Calendar not found")
@@ -34,6 +37,7 @@ def read_calendar(calendar_id: int, session: Session = Depends(get_db)):
 def update_calendar(
     calendar_id: int, calendar: Calendar, session: Session = Depends(get_db)
 ):
+    """Update a calendar"""
     db_calendar = session.get(Calendar, calendar_id)
     if not db_calendar:
         raise HTTPException(status_code=404, detail="Calendar not found")
@@ -47,6 +51,7 @@ def update_calendar(
 
 @router.delete("/{calendar_id}", status_code=204)
 def delete_calendar(calendar_id: int, session: Session = Depends(get_db)):
+    """Delete a calendar"""
     calendar = session.get(Calendar, calendar_id)
     if not calendar:
         raise HTTPException(status_code=404, detail="Calendar not found")

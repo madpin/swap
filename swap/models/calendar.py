@@ -10,6 +10,7 @@ class Calendar(SQLModel, table=True):
     name: str
     key: str
     main_email: Optional[str] = None
+    extra_emails: Optional[str] = None
     description: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

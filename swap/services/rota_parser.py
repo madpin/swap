@@ -13,6 +13,7 @@ from google.oauth2.service_account import Credentials as ServiceAccountCredentia
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from swap.utils.logger import logger
 import pytest
 
 """
@@ -48,11 +49,11 @@ Note:
 # Constants for authentication
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 
-# Logger setup
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
+# # Logger setup
+# logging.basicConfig(
+#     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+# )
+# logger = logging.getLogger(__name__)
 
 
 class GoogleSpreadsheetReader:

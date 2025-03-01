@@ -1,4 +1,4 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 from typing import Optional, List
 
@@ -92,6 +92,11 @@ class RotaSettings(BaseSettings):
 
 class Settings(BaseSettings):
     """Aggregated settings for the entire application."""
+
+    model_config = SettingsConfigDict(
+        env_file=(".env", ".env.prod"),  # `.env.prod` takes priority over `.env`
+        env_file_encoding="utf-8",
+    )
 
     system: SystemSettings = SystemSettings()
     postgres: Optional[PostgresSettings] = None

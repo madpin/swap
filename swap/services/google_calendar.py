@@ -9,6 +9,7 @@ from googleapiclient.errors import HttpError
 import asyncio
 import functools
 from google.auth.transport.requests import Request as GoogleRequest
+from swap.utils.logger import logger
 
 
 class GoogleCalendarError(Exception):
@@ -83,9 +84,7 @@ CALENDAR_SHARING_BASE_URL = (
     "https://calendar.google.com/calendar/u/0/r/settings/calendar"
 )
 
-# Logging setup
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+
 
 
 async def to_thread(func, *args, **kwargs):
