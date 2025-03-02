@@ -174,3 +174,5 @@ tasks.db
 codes.md
 *.bin
 swap.db
+.aider*
+.aider.chat.history.md

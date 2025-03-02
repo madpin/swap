@@ -7,6 +7,7 @@ from swap.models.calendar import Calendar, Event
 from datetime import datetime
 from swap.utils.logger import logger
 from swap.services.google_calendar import GoogleCalendarService
+from swap.services.calendar_manager import CalendarManager
 from typing import Optional
 
 
@@ -28,44 +29,77 @@ async def ingest_rota_record(
         )
 
 
-def check_and_create_calendar(
-    session: Session, rota_entry: dict, google_calendar_id: Optional[str] = None
+async def check_and_create_calendar(
+    session: Session, rota_entry: dict, calendar_manager: Optional['CalendarManager'] = None
 ) -> Calendar:
     """
     Checks if a calendar exists for the rota entry's name, creates one if it doesn't.
+    Uses CalendarManager to handle Google Calendar creation and permissions.
     """
     calendar = session.exec(
         select(Calendar).where(Calendar.key == rota_entry["name"])
     ).first()
-    if not calendar:
+    
+    if not calendar and calendar_manager:
+        # Extract owner email from rota entry or use default
+        owner_email = rota_entry.get("email", rota_entry.get("name", "default") + "@example.com")
+        
+        # Create calendar using manager
+        calendar = await calendar_manager.get_or_create_calendar(
+            name=rota_entry["name"],
+            owner_email=owner_email
+        )
+        
+    elif not calendar:
+        # Fallback if no calendar manager provided
         calendar = Calendar(
             name=rota_entry["name"],
             key=rota_entry["name"],
-            google_calendar_id=google_calendar_id,
+            main_email=rota_entry.get("email"),
         )
         session.add(calendar)
         session.commit()
         session.refresh(calendar)
+        
     return calendar
 
 
 async def prepare_google_calendar(
-    session: Session, calendar: Calendar, service_account_file: str
+    session: Session, calendar: Calendar, calendar_manager: 'CalendarManager'
 ) -> GoogleCalendarService:
     """
-    Prepares the Google Calendar by creating it if the google_calendar_id is not filled.
+    Prepares the Google Calendar service for a given calendar.
+    Uses CalendarManager to handle calendar creation and permissions.
     """
     if not calendar.google_calendar_id:
-        google_calendar_service = GoogleCalendarService(
-            service_account_file=service_account_file
-        )
-        gcal = await google_calendar_service.create_calendar(calendar.name)
+        # Create calendar in Google Calendar
+        gcal = await calendar_manager.google_calendar.create_calendar(calendar.name)
         calendar.google_calendar_id = gcal["id"]
+        
+        # Set up permissions
+        if calendar.main_email:
+            await calendar_manager.google_calendar.share_calendar(
+                email=calendar.main_email,
+                calendar_id=gcal["id"],
+                role="owner"
+            )
+            
+        # Handle additional users if any
+        if calendar.extra_emails:
+            extra_emails = calendar.extra_emails.split(',')
+            for email in extra_emails:
+                await calendar_manager.google_calendar.share_calendar(
+                    email=email.strip(),
+                    calendar_id=gcal["id"],
+                    role="writer"
+                )
+        
         session.add(calendar)
         session.commit()
         session.refresh(calendar)
+    
     return GoogleCalendarService(
-        service_account_file=service_account_file,
+        service_account_file=calendar_manager.service_account_file,
         calendar_id=calendar.google_calendar_id,
     )
 
