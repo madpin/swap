@@ -1,7 +1,3 @@
-Here's your revamped README.md file with the new name **S.W.A.P. (Shift-Workers Arrangement Platform)** 🚀😎
-
----
-
 # 🗓️ **S.W.A.P. — Shift-Workers Arrangement Platform**
 
 > "_There is no spoon._" – The Matrix  
