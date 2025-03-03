@@ -1,8 +1,8 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from swap.scheduler import scheduler
-from swap.scheduler.scheduler import start_scheduler, stop_scheduler
+from swap.scheduler.scheduler import start_scheduler, stop_scheduler, scheduler
+from swap.scheduler.tasks import sync_calendars
 from swap.api.v1.endpoints import router as api_router
 from swap.utils.logger import logger
 from swap.core.database import check_database_health
@@ -20,6 +20,16 @@ async def lifespan(app: FastAPI):
     
     # Start the scheduler
     start_scheduler()
+    
+    # Schedule daily calendar sync at midnight
+    scheduler.add_job(
+        sync_calendars,
+        'cron',
+        hour=0,
+        minute=0,
+        id='daily_calendar_sync',
+        replace_existing=True
+    )
     
     yield
     

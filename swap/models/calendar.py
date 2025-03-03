@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 from sqlmodel import SQLModel, Field, Relationship
 
@@ -41,3 +41,16 @@ class Event(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     last_synced: Optional[datetime] = Field(default=None)
     calendar: Calendar = Relationship(back_populates="events")
+
+
+class UserCalendar(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_name: str = Field(index=True)  # Name from the rota spreadsheet
+    calendar_id: int = Field(foreign_key="calendar.id")
+    is_active: bool = Field(default=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    calendar: Calendar = Relationship(back_populates="users")
+
+# Add the back-reference to Calendar
+Calendar.users: List["UserCalendar"] = Relationship(back_populates="calendar")

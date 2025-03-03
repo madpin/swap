@@ -2,9 +2,9 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from swap.config import settings
-from swap.scheduler.tasks import send_notification, sync_calendars
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from swap.utils.logger import logger
+from swap.scheduler.tasks import sync_calendars
 
 logger.info(f"Task store URL: {settings.task_store_url}")
 
@@ -22,18 +22,9 @@ scheduler = AsyncIOScheduler(
 )
 
 def start_scheduler():
-    """Start the scheduler and add default jobs"""
+    """Start the scheduler"""
     try:
-        # Schedule calendar sync job (every 30 minutes by default)
-        scheduler.add_job(
-            sync_calendars,
-            trigger=IntervalTrigger(minutes=30),
-            id='calendar_sync',
-            name='Calendar Synchronization',
-            replace_existing=True
-        )
-        
-        logger.info("Starting scheduler with default jobs")
+        logger.info("Starting scheduler")
         scheduler.start()
     except Exception as e:
         logger.error(f"Failed to start scheduler: {e}")
@@ -48,30 +39,28 @@ def stop_scheduler():
         logger.error(f"Error shutting down scheduler: {e}")
         raise
 
-def schedule_notification(cron_expression: str, message: str, recipients: list[str] = None):
+def add_job(func, trigger, job_id: str, **kwargs):
     """
-    Schedule a new notification job.
+    Add a job to the scheduler.
     
     Args:
-        cron_expression: Cron expression for scheduling
-        message: Message to send
-        recipients: List of recipient identifiers
+        func: Function to schedule
+        trigger: APScheduler trigger
+        job_id: Unique identifier for the job
+        **kwargs: Additional arguments for scheduler.add_job
     """
     try:
-        job_id = f"notification_{message[:20]}_{cron_expression}"  # Create unique job ID
-        logger.info(f"Scheduling notification job {job_id} with cron: {cron_expression}")
-        
         scheduler.add_job(
-            send_notification,
-            trigger=CronTrigger.from_crontab(cron_expression),
+            func,
+            trigger=trigger,
             id=job_id,
-            name=f"Notification: {message[:30]}",
-            args=[message, recipients],
-            replace_existing=True
+            replace_existing=True,
+            **kwargs
         )
-        return job_id
+        logger.info(f"Added job: {job_id}")
+        return True
     except Exception as e:
-        logger.error(f"Failed to schedule notification: {e}")
+        logger.error(f"Failed to add job {job_id}: {e}")
         raise
 
 def remove_job(job_id: str) -> bool:
