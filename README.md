@@ -70,13 +70,13 @@ Want containerized & hassle-free deploys?
 
 **Build and run:**
 ```bash
+# Build the Docker image
 docker build -t swap-rota-sync .
 
-export SERVICE_ACCOUNT_FILE='/path/to/service-account.json'
-
+# Run the container with your service account
 docker run \
--v $SERVICE_ACCOUNT_FILE:/app/service-account.json \
-swap-rota-sync
+  -v /path/to/your/service-account.json:/app/service-account.json \
+  swap-rota-sync
 ```
 
 Let Docker manage your deployments while you relax (or perhaps watch some One Piece 🍿🏴‍☠️).

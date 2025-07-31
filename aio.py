@@ -26,13 +26,13 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 # Constants
-SPREADSHEET_ID = "133dO2oU424ruQn0Gt1w-IgJMxhYw4P7HRIBWFRQkznY"
+SPREADSHEET_ID = "1KKS89Y3M9xW6lI00qXAO45zyi7Xk5Y4DBGKqSDkfOZQ"
 RANGE_NAME = "Sheet1!A:M"
 
 USERS = [
     {
         "CALENDAR_NAME": "Rachel's Rota",
-        "USER_NAME": "Rachel",
+        "USER_NAME": "DrRachelKerry",
         "EMAILS_TO_SHARE": [
             "madpin@gmail.com",
             "tpinto@indeed.com",
@@ -41,8 +41,8 @@ USERS = [
         ],
     },
     {
-        "CALENDAR_NAME": "Desire's Rota",
-        "USER_NAME": "Desire",
+        "CALENDAR_NAME": "Grace's Rota",
+        "USER_NAME": "DrGraceHigh",
         "EMAILS_TO_SHARE": [
             "madpin@gmail.com",
         ],
@@ -186,6 +186,7 @@ class RotaParser:
     def parse_rota(self) -> List[Dict]:
         """Parse rota data and return a list of shift dictionaries."""
         data = self.get_rota_data()
+        logger.info(f"Retrieved {len(data)} rows from spreadsheet")
         shifts = []
         current_dates = []
         after_today = False
@@ -195,7 +196,7 @@ class RotaParser:
             date_count = 0
             for cell in row:
                 try:
-                    for date_format in ["%a %d %b", "%B %d", "%d %B", "%d/%m", "%d-%m"]:
+                    for date_format in ["%a %d %b", "%B %d", "%d %B", "%d/%m", "%d-%m", "%d-%b"]:
                         try:
                             datetime.strptime(cell.strip(), date_format)
                             date_count += 1
@@ -211,6 +212,7 @@ class RotaParser:
                 continue
 
             if is_date_row(row):
+                logger.info(f"Found date row: {row[:7]}...")  # Show first 7 elements
                 current_dates = []
                 for date_str in row:
                     try:
@@ -221,6 +223,7 @@ class RotaParser:
                             "%d %B",
                             "%d/%m",
                             "%d-%m",
+                            "%d-%b",
                         ]:
                             try:
                                 parsed_date = datetime.strptime(
@@ -233,7 +236,10 @@ class RotaParser:
                         if parsed_date:
                             current_date = datetime.now()
                             target_date = parsed_date.replace(year=current_date.year)
-                            if target_date >= current_date:
+                            
+                            # Allow dates within the last 30 days or in the future
+                            thirty_days_ago = current_date - timedelta(days=30)
+                            if target_date >= thirty_days_ago:
                                 after_today = True
 
                             three_months_ago = current_date - timedelta(days=90)
@@ -256,6 +262,7 @@ class RotaParser:
                 continue
 
             name = "".join(char for char in row[1] if char.isalpha())
+            logger.info(f"Processing shifts for name: '{name}' from row: {row[1]}")
 
             for i, shift_data in enumerate(row):
                 if i >= len(current_dates) or not current_dates[i]:
@@ -279,6 +286,7 @@ class RotaParser:
                     "POST NIGHTS": ("post_nights", False),
                     "PRE NIGHT OFF": ("pre_night", False),
                     "PRE NIGHT": ("pre_night", False),
+                    "TR": ("training", True),
                     "*N/A": ("not_available", False),
                     "/": ("not_available", False),
                 }
@@ -569,14 +577,50 @@ def process_shifts(
                 )
             continue
 
-        # Only process working shifts with start and end dates
+        # Handle working shifts without specific times (like training) as all-day events
         if "start_date" not in shift or "end_date" not in shift:
+            summary = f"{shift['shift_type'].replace('_', ' ').title()}"
+            description = f"{shift['name']} - {shift['date']}\n{shift['raw_data']}"
+            start_time = datetime.combine(shift_date, datetime.min.time())
+            end_time = start_time + timedelta(days=1)
+
+            # Check if event already exists and is identical
+            event_exists = False
+            if current_events and len(current_events) == 1:
+                existing_event = current_events[0]
+                if (
+                    existing_event.get("summary") == summary
+                    and existing_event.get("description") == description
+                ):
+                    event_exists = True
+                    logger.info(
+                        f"All-day working event already exists for {shift['date']}, skipping"
+                    )
+
+            # Remove old events if they exist and are different
+            if current_events and not event_exists:
+                for event in current_events:
+                    logger.info(f"Deleting outdated event for {shift['date']}")
+                    calendar_manager.delete_event(event["id"])
+
+            # Create new all-day event if it doesn't exist or is different
+            if not event_exists:
+                logger.info(
+                    f"Creating new all-day working event for {shift['date']}: {summary}"
+                )
+                calendar_manager.create_event(
+                    summary=summary,
+                    description=description,
+                    start_time=start_time,
+                    end_time=end_time,
+                    timezone="Europe/Dublin",
+                )
             continue
 
         # Prepare event details
         start_time = datetime.strptime(shift["start_date"], "%Y-%m-%d %H:%M:%S")
         end_time = datetime.strptime(shift["end_date"], "%Y-%m-%d %H:%M:%S")
-        summary = f"🏥 Hospital ({start_time.strftime('%H:%M')} - {end_time.strftime('%H:%M')})"
+        summary = f"🏥 Work ({start_time.strftime('%H:%M')} - {end_time.strftime('%H:%M')})"
         description = f"{shift['name']} - {shift['date']}\n{shift['raw_data']}"
 
         # Check if event already exists and is identical
