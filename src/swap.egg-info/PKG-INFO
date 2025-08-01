@@ -1,3 +1,28 @@
+Metadata-Version: 2.4
+Name: swap
+Version: 1.0.0
+Summary: Rota to Google Calendar Sync
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: google-api-python-client==2.39.0
+Requires-Dist: google-auth==2.6.6
+Requires-Dist: google-auth-oauthlib==0.4.6
+Requires-Dist: google-auth-httplib2==0.1.0
+Requires-Dist: pytz==2021.3
+Requires-Dist: pydantic==2.7.4
+Requires-Dist: pydantic-settings==2.3.4
+Requires-Dist: PyYAML==6.0.1
+Requires-Dist: SQLAlchemy==2.0.31
+Requires-Dist: alembic==1.13.2
+Requires-Dist: click==8.1.7
+Requires-Dist: rich==13.7.1
+Provides-Extra: dev
+Requires-Dist: pytest==8.2.2; extra == "dev"
+Requires-Dist: pytest-cov==5.0.0; extra == "dev"
+Requires-Dist: black==24.4.2; extra == "dev"
+Requires-Dist: isort==5.13.2; extra == "dev"
+Requires-Dist: mypy==1.10.1; extra == "dev"
+
 # Swap - Rota to Google Calendar Sync
 
 A modern, well-structured Python application that synchronizes staff shift data from Google Spreadsheets to Google Calendar with intelligent change detection and caching.

@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "swap"
+version = "1.0.0"
+description = "Rota to Google Calendar Sync"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "google-api-python-client==2.39.0",
+    "google-auth==2.6.6",
+    "google-auth-oauthlib==0.4.6",
+    "google-auth-httplib2==0.1.0",
+    "pytz==2021.3",
+    "pydantic==2.7.4",
+    "pydantic-settings==2.3.4",
+    "PyYAML==6.0.1",
+    "SQLAlchemy==2.0.31",
+    "alembic==1.13.2",
+    "click==8.1.7",
+    "rich==13.7.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.2.2",
+    "pytest-cov==5.0.0",
+    "black==24.4.2",
+    "isort==5.13.2",
+    "mypy==1.10.1",
+]
+
+[project.scripts]
+swap = "swap.cli:cli"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 100
+target-version = ['py38']
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.mypy]
+python_version = "3.8"
+strict = true
+warn_return_any = true
+warn_unused_configs = true

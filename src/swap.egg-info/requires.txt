@@ -1,23 +1,19 @@
-# Core dependencies
 google-api-python-client==2.39.0
 google-auth==2.6.6
 google-auth-oauthlib==0.4.6
 google-auth-httplib2==0.1.0
 pytz==2021.3
-
-# Configuration and validation
 pydantic==2.7.4
 pydantic-settings==2.3.4
 PyYAML==6.0.1
-
-# Database
 SQLAlchemy==2.0.31
 alembic==1.13.2
-
-# CLI and utilities
 click==8.1.7
 rich==13.7.1
 
-# Testing (optional)
+[dev]
 pytest==8.2.2
 pytest-cov==5.0.0
+black==24.4.2
+isort==5.13.2
+mypy==1.10.1

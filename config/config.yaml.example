@@ -1,0 +1,33 @@
+# Swap Configuration Example
+# Copy this file to config.yaml and customize for your setup
+
+# Application settings
+debug: false
+log_level: "INFO"
+
+# Database configuration
+database:
+  url: "sqlite:///swap.db"  # Use SQLite database file
+  echo: false  # Set to true to see SQL queries
+
+# Google API configuration  
+google:
+  service_account_file: "/path/to/your/service-account.json"
+  spreadsheet_id: "1KKS89Y3M9xW6lI00qXAO45zyi7Xk5Y4DBGKqSDkfOZQ"
+  range_name: "Sheet1!A:M"
+  timezone: "Europe/Dublin"
+
+# Users configuration
+users:
+  - calendar_name: "Rachel's Rota"
+    user_name: "DrRachelKerry"
+    emails_to_share:
+      - "madpin@gmail.com"
+      - "tpinto@indeed.com"
+      - "rachelkerry95@gmail.com"
+      - "rachiel.kerry1@gmail.com"
+  
+  - calendar_name: "Grace's Rota"
+    user_name: "DrGraceHigh"
+    emails_to_share:
+      - "madpin@gmail.com"
