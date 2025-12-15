@@ -4,3 +4,6 @@ google-auth==2.6.6
 google-auth-oauthlib==0.4.6
 google-auth-httplib2==0.1.0
 pytz==2021.3
+flask==3.0.0
+apscheduler==3.10.4
+gunicorn==21.2.0

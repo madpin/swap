@@ -14,11 +14,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the current directory contents into the container at /app
 COPY . /app
 
-# Make port 80 available to the world outside this container
-# EXPOSE 80
+# Expose port for web interface
+EXPOSE 5000
 
-# Define environment variable
+# Define environment variables
 ENV SERVICE_ACCOUNT_FILE="/app/service-account.json"
+ENV PORT=5000
 
-# Run aio.py when the container launches
-CMD ["python", "/app/aio.py"]
+# Run web interface by default (can override with: docker run ... python aio.py)
+CMD ["python", "/app/web.py"]

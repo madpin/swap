@@ -482,11 +482,35 @@ class GoogleCalendarManager:
 
 def get_service_account_file() -> str:
     """Retrieve the service account file path from environment variables."""
+    # Try to get from file path first
     service_account_file = os.environ.get("SERVICE_ACCOUNT_FILE")
-    if not service_account_file:
-        logger.error("Error: The SERVICE_ACCOUNT_FILE environment variable is not set.")
-        exit(1)
-    return service_account_file
+    if service_account_file and os.path.exists(service_account_file):
+        return service_account_file
+    
+    # Try to get from JSON env var (useful for Railway/Heroku)
+    service_account_json = os.environ.get("SERVICE_ACCOUNT_JSON")
+    if service_account_json:
+        import tempfile
+        import json
+        # Write JSON to temp file
+        fd, path = tempfile.mkstemp(suffix='.json')
+        try:
+            with os.fdopen(fd, 'w') as f:
+                # If it's a string, parse it as JSON first to validate
+                if isinstance(service_account_json, str):
+                    json_data = json.loads(service_account_json)
+                    json.dump(json_data, f)
+                else:
+                    json.dump(service_account_json, f)
+            logger.info(f"Created temporary service account file at {path}")
+            return path
+        except Exception as e:
+            logger.error(f"Failed to parse SERVICE_ACCOUNT_JSON: {e}")
+            os.unlink(path)
+            exit(1)
+    
+    logger.error("Error: Neither SERVICE_ACCOUNT_FILE nor SERVICE_ACCOUNT_JSON is set.")
+    exit(1)
 
 
 def initialize_calendar(calendar_manager: GoogleCalendarManager, calendar_name: str) -> None:

@@ -47,12 +47,36 @@ _Go from zero to "Swapped" in minutes:_
 - 📃 [Google Service Account credentials](https://developers.google.com/workspace/guides/create-credentials#service-account)
 - 🔓 Enabled Sheets & Calendar APIs ([Google Cloud console](https://console.cloud.google.com/apis-dashboard))
 
-**Quickstart commands:**
+### Option 1: Web Interface with Scheduler (Recommended)
+
+Run the web interface with built-in scheduler and simple UI:
+
 ```bash
 git clone https://github.com/madpin/swap.git
 cd swap
 pip install -r requirements.txt
 
+# Set your credentials and password
+export SERVICE_ACCOUNT_FILE='/path/to/service-account.json'
+export ADMIN_PASSWORD='your_secure_password'
+
+# Run the web interface!
+python web.py
+```
+
+Then open `http://localhost:5000` in your browser and login with your password.
+
+Features:
+- 🎮 **Simple UI**: Play/Pause scheduler controls
+- ⏰ **Auto-sync**: Runs every hour when scheduler is active
+- 🔐 **Password Protected**: Secure with environment variable
+- 📊 **Status Dashboard**: View last sync time and status
+
+### Option 2: Command Line (One-time sync)
+
+For a single manual sync:
+
+```bash
 # Set your credentials 
 export SERVICE_ACCOUNT_FILE='/path/to/service-account.json'
 
@@ -64,6 +88,21 @@ That's it! Your work schedule syncs automatically. 🎉🙌
 
 ---
 
+## 🚂 **Railway Deployment (Easiest!)**
+
+Deploy to Railway with one click and get a hosted web interface:
+
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new)
+
+**Setup in Railway:**
+1. Set environment variables:
+   - `ADMIN_PASSWORD`: Your secure password
+   - `SERVICE_ACCOUNT_JSON`: Paste your entire service account JSON
+2. Deploy and access your dashboard
+3. Click Play to start the scheduler!
+
+📚 [Full Railway deployment guide](DEPLOYMENT.md)
+
 ## 🐳 **Docker Lovers, We've Got You Covered**
 
 Want containerized & hassle-free deploys?
@@ -73,7 +112,16 @@ Want containerized & hassle-free deploys?
 # Build the Docker image
 docker build -t swap-rota-sync .
 
-# Run the container with your service account
+# Run the web interface
+docker run \
+  -p 5000:5000 \
+  -e ADMIN_PASSWORD='your_password' \
+  -v /path/to/your/service-account.json:/app/service-account.json \
+  swap-rota-sync python web.py
+```
+
+Or run one-time sync:
+```bash
 docker run \
   -v /path/to/your/service-account.json:/app/service-account.json \
   swap-rota-sync
