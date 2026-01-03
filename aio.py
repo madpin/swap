@@ -208,6 +208,9 @@ class RotaParser:
                     continue
             return date_count >= 3
 
+        # Track the column index where the first date appears
+        first_date_column = None
+        
         for row in data:
             if not row or len(row) < 3:
                 continue
@@ -215,7 +218,9 @@ class RotaParser:
             if is_date_row(row):
                 logger.info(f"Found date row: {row[:7]}...")  # Show first 7 elements
                 current_dates = []
-                for date_str in row:
+                first_date_column = None  # Reset for each date row
+                
+                for col_idx, date_str in enumerate(row):
                     try:
                         parsed_date = None
                         for date_format in [
@@ -235,6 +240,11 @@ class RotaParser:
                                 continue
 
                         if parsed_date:
+                            # Track the first date column
+                            if first_date_column is None:
+                                first_date_column = col_idx
+                                logger.info(f"First date found in column {first_date_column}")
+                            
                             current_date = datetime.now()
                             target_date = parsed_date.replace(year=current_date.year)
                             
@@ -259,11 +269,29 @@ class RotaParser:
             if not after_today:
                 continue
 
-            if "Changeover" in str(row[0]) or not row[1].strip() or len(row) < 3:
+            if "Changeover" in str(row[0]) or len(row) < 3:
                 continue
 
-            name = "".join(char for char in row[1] if char.isalpha())
-            logger.info(f"Processing shifts for name: '{name}' from row: {row[1]}")
+            # Dynamic name search based on first_date_column
+            # If first date is in column N, search for name in columns 0 to N-1
+            name = None
+            if first_date_column is not None and first_date_column > 0:
+                for col_idx in range(first_date_column):
+                    if col_idx < len(row) and row[col_idx].strip():
+                        candidate_name = "".join(char for char in row[col_idx] if char.isalpha())
+                        if candidate_name:
+                            name = candidate_name
+                            logger.info(f"Found name '{name}' in column {col_idx}")
+                            break
+            
+            # Fallback to column 1 if no name found
+            if name is None:
+                if len(row) > 1 and row[1].strip():
+                    name = "".join(char for char in row[1] if char.isalpha())
+                else:
+                    continue
+            
+            logger.info(f"Processing shifts for name: '{name}' from row: {row[:min(len(row), 5)]}")
 
             for i, shift_data in enumerate(row):
                 if i >= len(current_dates) or not current_dates[i]:
