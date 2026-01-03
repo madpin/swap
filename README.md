@@ -68,18 +68,45 @@ That's it! Your work schedule syncs automatically. 🎉🙌
 
 Want containerized & hassle-free deploys?
 
-**Build and run:**
+**Pull and run:**
 ```bash
-# Build the Docker image
-docker build -t swap-rota-sync .
+# Pull the pre-built image
+docker pull ghcr.io/madpin/swap
 
 # Run the container with your service account
 docker run \
-  -v /path/to/your/service-account.json:/app/service-account.json \
-  swap-rota-sync
+  -v /root/.config/swap/madpin-08b601161bcb.json:/app/service-account.json:ro \
+  ghcr.io/madpin/swap
 ```
 
 Let Docker manage your deployments while you relax (or perhaps watch some One Piece 🍿🏴‍☠️).
+
+---
+
+## ⏰ **Automated Daily Sync with Cron**
+
+Want S.W.A.P. to run automatically every day? Set up a cron job!
+
+**Create the log directory:**
+```bash
+mkdir -p /root/.config/swap/logs
+```
+
+**Add to your crontab:**
+```bash
+# Edit crontab
+crontab -e
+
+# Add this line to run daily at 6:00 AM
+0 6 * * * docker run --rm -v /root/.config/swap/madpin-08b601161bcb.json:/app/service-account.json:ro ghcr.io/madpin/swap >> /root/.config/swap/logs/swap-$(date +\%Y\%m\%d).log 2>&1
+```
+
+This will:
+- 🕕 Run S.W.A.P. every day at 6:00 AM
+- 📝 Save logs to `/root/.config/swap/logs/swap-YYYYMMDD.log`
+- 📊 Capture both stdout and stderr for debugging
+
+**Tip:** Adjust the time (`0 6 * * *`) to match your preference. Use [crontab.guru](https://crontab.guru/) to customize the schedule!
 
 ---
 

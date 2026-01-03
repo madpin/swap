@@ -26,13 +26,14 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 # Constants
-SPREADSHEET_ID = "1KKS89Y3M9xW6lI00qXAO45zyi7Xk5Y4DBGKqSDkfOZQ"
-RANGE_NAME = "Sheet1!A:M"
+# SPREADSHEET_ID = "1KKS89Y3M9xW6lI00qXAO45zyi7Xk5Y4DBGKqSDkfOZQ"
+SPREADSHEET_ID = "1_-INofgBo-ZX_I52raEsagUrDsu0JLMbz5z-B8X0u8c"
+RANGE_NAME = "Sheet1!A:H"
 
 USERS = [
     {
         "CALENDAR_NAME": "Rachel's Rota",
-        "USER_NAME": "DrRachelKerry",
+        "USER_NAMES": ["DrRachelKerry", "RACHEL"],
         "EMAILS_TO_SHARE": [
             "madpin@gmail.com",
             "tpinto@indeed.com",
@@ -42,7 +43,7 @@ USERS = [
     },
     {
         "CALENDAR_NAME": "Grace's Rota",
-        "USER_NAME": "DrGraceHigh",
+        "USER_NAMES": ["DrGraceHigh", "GRACE"],
         "EMAILS_TO_SHARE": [
             "madpin@gmail.com",
         ],
@@ -526,10 +527,15 @@ def share_calendar_with_users(
 
 
 def process_shifts(
-    calendar_manager: GoogleCalendarManager, parsed_rota: List[Dict], user_name: str
+    calendar_manager: GoogleCalendarManager, parsed_rota: List[Dict], user_names: List[str]
 ) -> None:
     """Process and add shifts to the calendar."""
-    filtered_shifts = [shift for shift in parsed_rota if shift["name"] == user_name]
+    # Normalize user names to lowercase for case-insensitive comparison
+    normalized_user_names = [name.lower() for name in user_names]
+    filtered_shifts = [
+        shift for shift in parsed_rota 
+        if shift["name"].lower() in normalized_user_names
+    ]
     filtered_shifts.sort(key=lambda x: x["date"], reverse=True)
 
     # Process only the latest 100 shifts
@@ -673,11 +679,16 @@ def main() -> None:
 
         for user in USERS:
             calendar_name = user["CALENDAR_NAME"]
-            user_name = user["USER_NAME"]
+            user_names = user["USER_NAMES"]
             emails_to_share = user["EMAILS_TO_SHARE"]
 
-            user_shifts = [shift for shift in parsed_rota if shift["name"] == user_name]
-            logger.info(f"Found {len(user_shifts)} shifts for {user_name}")
+            # Normalize user names for case-insensitive comparison
+            normalized_user_names = [name.lower() for name in user_names]
+            user_shifts = [
+                shift for shift in parsed_rota 
+                if shift["name"].lower() in normalized_user_names
+            ]
+            logger.info(f"Found {len(user_shifts)} shifts for {', '.join(user_names)}")
 
             # Initialize calendar manager
             logger.info(f"Initializing calendar manager for {calendar_name}")
@@ -687,11 +698,13 @@ def main() -> None:
 
             # Setup calendar
             initialize_calendar(calendar_manager, calendar_name)
+            
+            # Ensure calendars are shared on every run (quick check already implemented)
             share_calendar_with_users(calendar_manager, emails_to_share)
 
             # Process and update shifts
-            logger.info(f"Processing shifts for {user_name}")
-            process_shifts(calendar_manager, parsed_rota, user_name)
+            logger.info(f"Processing shifts for {', '.join(user_names)}")
+            process_shifts(calendar_manager, parsed_rota, user_names)
 
         logger.info("Calendar sync completed successfully")
 
