@@ -27,7 +27,8 @@ from googleapiclient.errors import HttpError
 
 # Constants
 # SPREADSHEET_ID = "1KKS89Y3M9xW6lI00qXAO45zyi7Xk5Y4DBGKqSDkfOZQ"
-SPREADSHEET_ID = "1_-INofgBo-ZX_I52raEsagUrDsu0JLMbz5z-B8X0u8c"
+# SPREADSHEET_ID = "1_-INofgBo-ZX_I52raEsagUrDsu0JLMbz5z-B8X0u8c"
+SPREADSHEET_ID = "1rVNXlnw9givLpVBFYr-zfR7vDSOhmG3ADQBc39Xhmt8"
 RANGE_NAME = "Sheet1!A:H"
 
 USERS = [
@@ -210,7 +211,7 @@ class RotaParser:
 
         # Track the column index where the first date appears
         first_date_column = None
-        
+
         for row in data:
             if not row or len(row) < 3:
                 continue
@@ -219,7 +220,7 @@ class RotaParser:
                 logger.info(f"Found date row: {row[:7]}...")  # Show first 7 elements
                 current_dates = []
                 first_date_column = None  # Reset for each date row
-                
+
                 for col_idx, date_str in enumerate(row):
                     try:
                         parsed_date = None
@@ -244,10 +245,10 @@ class RotaParser:
                             if first_date_column is None:
                                 first_date_column = col_idx
                                 logger.info(f"First date found in column {first_date_column}")
-                            
+
                             current_date = datetime.now()
                             target_date = parsed_date.replace(year=current_date.year)
-                            
+
                             # Allow dates within the last 30 days or in the future
                             thirty_days_ago = current_date - timedelta(days=30)
                             if target_date >= thirty_days_ago:
@@ -283,14 +284,14 @@ class RotaParser:
                             name = candidate_name
                             logger.info(f"Found name '{name}' in column {col_idx}")
                             break
-            
+
             # Fallback to column 1 if no name found
             if name is None:
                 if len(row) > 1 and row[1].strip():
                     name = "".join(char for char in row[1] if char.isalpha())
                 else:
                     continue
-            
+
             logger.info(f"Processing shifts for name: '{name}' from row: {row[:min(len(row), 5)]}")
 
             for i, shift_data in enumerate(row):
@@ -561,7 +562,7 @@ def process_shifts(
     # Normalize user names to lowercase for case-insensitive comparison
     normalized_user_names = [name.lower() for name in user_names]
     filtered_shifts = [
-        shift for shift in parsed_rota 
+        shift for shift in parsed_rota
         if shift["name"].lower() in normalized_user_names
     ]
     filtered_shifts.sort(key=lambda x: x["date"], reverse=True)
@@ -713,7 +714,7 @@ def main() -> None:
             # Normalize user names for case-insensitive comparison
             normalized_user_names = [name.lower() for name in user_names]
             user_shifts = [
-                shift for shift in parsed_rota 
+                shift for shift in parsed_rota
                 if shift["name"].lower() in normalized_user_names
             ]
             logger.info(f"Found {len(user_shifts)} shifts for {', '.join(user_names)}")
@@ -726,7 +727,7 @@ def main() -> None:
 
             # Setup calendar
             initialize_calendar(calendar_manager, calendar_name)
-            
+
             # Ensure calendars are shared on every run (quick check already implemented)
             share_calendar_with_users(calendar_manager, emails_to_share)
 
