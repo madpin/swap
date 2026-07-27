@@ -73,7 +73,9 @@ python aio.py --overwrite-events
 This deletes events created by S.W.A.P., including events from versions that
 predate ownership tagging, then rebuilds the calendar from the current sheet.
 Other calendar events are left unchanged. Normal runs also remove old S.W.A.P.
-events from dates that are present in the rota but blank for that user.
+events from dates that are present in the rota but blank for that user. Both
+normal sync and overwrite only process today and future dates; past calendar
+events are left unchanged.
 
 For Docker or cron, set the equivalent environment variable:
 

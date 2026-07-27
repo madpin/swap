@@ -1,4 +1,5 @@
 import unittest
+from datetime import date
 
 from aio import (
     SWAP_EVENT_DATE_PROPERTY,
@@ -15,11 +16,15 @@ class FakeCalendarManager:
         self.all_events = all_events or []
         self.created_events = []
         self.deleted_event_ids = []
+        self.requested_dates = []
+        self.list_from_date = None
 
     def get_events_date(self, date):
+        self.requested_dates.append(date.isoformat())
         return self.events_by_date.get(date.isoformat(), [])
 
-    def list_events(self):
+    def list_events(self, from_date=None):
+        self.list_from_date = from_date
         return self.all_events
 
     def create_event(self, **event):
@@ -65,13 +70,22 @@ class SwapEventTests(unittest.TestCase):
                     "summary": "Dentist",
                     "description": "Personal appointment",
                 },
+                {
+                    "id": "past",
+                    "description": "Rachel - 2026-07-31\nOFF",
+                },
             ]
         )
 
-        deleted_count = delete_swap_events(manager, self.user_names)
+        deleted_count = delete_swap_events(
+            manager,
+            self.user_names,
+            from_date=date(2026, 8, 1),
+        )
 
         self.assertEqual(deleted_count, 2)
         self.assertEqual(manager.deleted_event_ids, ["tagged", "legacy"])
+        self.assertEqual(manager.list_from_date, date(2026, 8, 1))
 
     def test_sync_replaces_owned_events_and_cleans_blank_dates(self):
         manager = FakeCalendarManager(
@@ -100,6 +114,13 @@ class SwapEventTests(unittest.TestCase):
                         "description": "Rachel - 2026-08-01\n20:00 - 08:00",
                     },
                 ],
+                "2026-07-31": [
+                    {
+                        "id": "past-shift",
+                        "summary": "Work",
+                        "description": "Rachel - 2026-07-31\n09:00 - 17:00",
+                    }
+                ],
             }
         )
         parsed_rota = [
@@ -111,14 +132,24 @@ class SwapEventTests(unittest.TestCase):
                 "is_working": True,
                 "start_date": "2026-08-01 10:00:00",
                 "end_date": "2026-08-01 18:00:00",
-            }
+            },
+            {
+                "name": "Rachel",
+                "date": "2026-07-31",
+                "raw_data": "09:00 - 17:00",
+                "shift_type": "regular",
+                "is_working": True,
+                "start_date": "2026-07-31 09:00:00",
+                "end_date": "2026-07-31 17:00:00",
+            },
         ]
 
         process_shifts(
             manager,
             parsed_rota,
             self.user_names,
-            covered_dates={"2026-08-01", "2026-08-02"},
+            covered_dates={"2026-07-31", "2026-08-01", "2026-08-02"},
+            from_date=date(2026, 8, 1),
         )
 
         self.assertEqual(
@@ -126,7 +157,9 @@ class SwapEventTests(unittest.TestCase):
             ["outdated-shift", "blank-day-shift"],
         )
         self.assertNotIn("manual", manager.deleted_event_ids)
+        self.assertNotIn("past-shift", manager.deleted_event_ids)
         self.assertNotIn("previous-night-shift", manager.deleted_event_ids)
+        self.assertNotIn("2026-07-31", manager.requested_dates)
         self.assertEqual(len(manager.created_events), 1)
         self.assertEqual(
             manager.created_events[0]["private_properties"][SWAP_EVENT_DATE_PROPERTY],
@@ -165,7 +198,12 @@ class SwapEventTests(unittest.TestCase):
             }
         ]
 
-        process_shifts(manager, parsed_rota, self.user_names)
+        process_shifts(
+            manager,
+            parsed_rota,
+            self.user_names,
+            from_date=date(2026, 8, 1),
+        )
 
         self.assertEqual(manager.deleted_event_ids, ["duplicate"])
         self.assertEqual(manager.created_events, [])

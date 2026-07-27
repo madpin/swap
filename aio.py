@@ -18,7 +18,7 @@ import argparse
 import logging
 import os
 import re
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import pytz
@@ -29,7 +29,8 @@ from googleapiclient.errors import HttpError
 # Constants
 # SPREADSHEET_ID = "1KKS89Y3M9xW6lI00qXAO45zyi7Xk5Y4DBGKqSDkfOZQ"
 # SPREADSHEET_ID = "1_-INofgBo-ZX_I52raEsagUrDsu0JLMbz5z-B8X0u8c"
-SPREADSHEET_ID = "1rVNXlnw9givLpVBFYr-zfR7vDSOhmG3ADQBc39Xhmt8"
+# https://docs.google.com/spreadsheets/d/1wYRT5yVKyprkVMfRj3DS6FjqWQ3eSbOw7AXXM6YB58k/edit?usp=sharing
+SPREADSHEET_ID = "1wYRT5yVKyprkVMfRj3DS6FjqWQ3eSbOw7AXXM6YB58k"
 RANGE_NAME = "Sheet1!A:H"
 
 USERS = [
@@ -533,23 +534,30 @@ class GoogleCalendarManager:
             logger.error(f"An error occurred: {error}")
             raise
 
-    def list_events(self) -> List[Dict[str, Any]]:
-        """List every non-deleted event in the selected calendar."""
+    def list_events(
+        self,
+        from_date: Optional[date] = None,
+        timezone: str = "Europe/Dublin",
+    ) -> List[Dict[str, Any]]:
+        """List non-deleted events starting on or after the supplied date."""
         try:
             events = []
             page_token = None
 
             while True:
-                events_result = (
-                    self.service.events()
-                    .list(
-                        calendarId=self.calendar_id,
-                        showDeleted=False,
-                        maxResults=2500,
-                        pageToken=page_token,
+                list_parameters = {
+                    "calendarId": self.calendar_id,
+                    "showDeleted": False,
+                    "maxResults": 2500,
+                    "pageToken": page_token,
+                }
+                if from_date:
+                    start_datetime = datetime.combine(from_date, datetime.min.time())
+                    list_parameters["timeMin"] = self._format_datetime(
+                        start_datetime, timezone
                     )
-                    .execute()
-                )
+
+                events_result = self.service.events().list(**list_parameters).execute()
                 events.extend(events_result.get("items", []))
                 page_token = events_result.get("nextPageToken")
                 if not page_token:
@@ -584,6 +592,11 @@ class GoogleCalendarManager:
 def get_service_account_file() -> str:
     """Retrieve the configured service account file path."""
     return os.environ.get("SERVICE_ACCOUNT_FILE", DEFAULT_SERVICE_ACCOUNT_FILE)
+
+
+def get_sync_start_date() -> date:
+    """Return today's date in the calendar's timezone."""
+    return datetime.now(pytz.timezone("Europe/Dublin")).date()
 
 
 def initialize_calendar(
@@ -669,12 +682,19 @@ def _delete_event_or_raise(
 
 
 def delete_swap_events(
-    calendar_manager: GoogleCalendarManager, user_names: List[str]
+    calendar_manager: GoogleCalendarManager,
+    user_names: List[str],
+    from_date: Optional[date] = None,
 ) -> int:
-    """Delete all current and legacy S.W.A.P. events from a calendar."""
+    """Delete current and legacy S.W.A.P. events from the cutoff date forward."""
+    cutoff_date = from_date or get_sync_start_date()
     deleted_count = 0
-    for event in calendar_manager.list_events():
+    for event in calendar_manager.list_events(from_date=cutoff_date):
         if not is_swap_event(event, user_names):
+            continue
+
+        event_date = get_swap_event_date(event, user_names)
+        if event_date and event_date < cutoff_date.isoformat():
             continue
 
         logger.info(
@@ -755,11 +775,16 @@ def process_shifts(
     parsed_rota: List[Dict],
     user_names: List[str],
     covered_dates: Optional[Set[str]] = None,
+    from_date: Optional[date] = None,
 ) -> None:
     """Reconcile the user's shifts and blank rota dates with the calendar."""
+    cutoff_date = (from_date or get_sync_start_date()).isoformat()
     normalized_user_names = [name.lower() for name in user_names]
     filtered_shifts = [
-        shift for shift in parsed_rota if shift["name"].lower() in normalized_user_names
+        shift
+        for shift in parsed_rota
+        if shift["name"].lower() in normalized_user_names
+        and shift["date"] >= cutoff_date
     ]
     filtered_shifts.sort(key=lambda shift: shift["date"], reverse=True)
 
@@ -767,9 +792,14 @@ def process_shifts(
         _sync_shift_event(calendar_manager, shift, user_names)
 
     shift_dates = {shift["date"] for shift in filtered_shifts}
-    for empty_date in sorted((covered_dates or set()) - shift_dates):
-        date = datetime.strptime(empty_date, "%Y-%m-%d").date()
-        current_events = calendar_manager.get_events_date(date) or []
+    future_covered_dates = {
+        covered_date
+        for covered_date in covered_dates or set()
+        if covered_date >= cutoff_date
+    }
+    for empty_date in sorted(future_covered_dates - shift_dates):
+        empty_shift_date = datetime.strptime(empty_date, "%Y-%m-%d").date()
+        current_events = calendar_manager.get_events_date(empty_shift_date) or []
         for event in current_events:
             if (
                 not is_swap_event(event, user_names)
@@ -804,6 +834,7 @@ def main() -> None:
     """Main function to orchestrate the rota parsing and calendar management."""
     try:
         args = parse_args()
+        sync_start_date = get_sync_start_date()
 
         # Get service account file
         service_account_file = get_service_account_file()
@@ -819,7 +850,16 @@ def main() -> None:
 
         logger.info("Parsing rota data")
         parsed_rota = parser.parse_rota()
-        logger.info(f"Found {len(parsed_rota)} shifts in the rota")
+        parsed_rota = [
+            shift
+            for shift in parsed_rota
+            if shift["date"] >= sync_start_date.isoformat()
+        ]
+        logger.info(
+            "Found %d shifts from %s forward",
+            len(parsed_rota),
+            sync_start_date.isoformat(),
+        )
 
         for user in USERS:
             calendar_name = user["CALENDAR_NAME"]
@@ -858,7 +898,11 @@ def main() -> None:
                     "Overwrite enabled; deleting existing S.W.A.P. events from %s",
                     calendar_name,
                 )
-                deleted_count = delete_swap_events(calendar_manager, user_names)
+                deleted_count = delete_swap_events(
+                    calendar_manager,
+                    user_names,
+                    from_date=sync_start_date,
+                )
                 logger.info(
                     "Deleted %d existing S.W.A.P. events from %s",
                     deleted_count,
@@ -872,6 +916,7 @@ def main() -> None:
                 parsed_rota,
                 user_names,
                 covered_dates=covered_dates,
+                from_date=sync_start_date,
             )
 
         logger.info("Calendar sync completed successfully")
