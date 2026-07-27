@@ -10,15 +10,16 @@ Requirements:
 - Google Sheets API
 - Google Calendar API
 
-Set the SERVICE_ACCOUNT_FILE environment variable to the path of your
-service account credentials file before running this script.
+By default, the script reads service-account.json from the project directory.
+Set SERVICE_ACCOUNT_FILE to override that path.
 """
 
+import argparse
+import logging
 import os
 import re
-import logging
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any, Tuple, Union
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import pytz
 from google.oauth2 import service_account
@@ -48,7 +49,7 @@ USERS = [
         "EMAILS_TO_SHARE": [
             "madpin@gmail.com",
         ],
-    }
+    },
 ]
 
 # Setup logging
@@ -60,6 +61,17 @@ logger = logging.getLogger(__name__)
 # API scopes
 SHEETS_SCOPE = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 CALENDAR_SCOPE = ["https://www.googleapis.com/auth/calendar"]
+
+DEFAULT_SERVICE_ACCOUNT_FILE = "/Users/tpinto/madpin/swap/service-account.json"
+SWAP_EVENT_PROPERTY = "swapManaged"
+SWAP_EVENT_PROPERTY_VALUE = "true"
+SWAP_EVENT_VERSION_PROPERTY = "swapVersion"
+SWAP_EVENT_VERSION = "2"
+SWAP_EVENT_DATE_PROPERTY = "swapShiftDate"
+SWAP_EVENT_PROPERTIES = {
+    SWAP_EVENT_PROPERTY: SWAP_EVENT_PROPERTY_VALUE,
+    SWAP_EVENT_VERSION_PROPERTY: SWAP_EVENT_VERSION,
+}
 
 
 class GoogleSpreadsheetReader:
@@ -102,6 +114,7 @@ class RotaParser:
         self.reader = GoogleSpreadsheetReader(service_account_file)
         self.spreadsheet_id = spreadsheet_id
         self.range_name = range_name
+        self.covered_dates_by_name: Dict[str, Set[str]] = {}
 
     def get_rota_data(self) -> List[List[str]]:
         """Retrieve rota data from Google Spreadsheet."""
@@ -189,6 +202,7 @@ class RotaParser:
         """Parse rota data and return a list of shift dictionaries."""
         data = self.get_rota_data()
         logger.info(f"Retrieved {len(data)} rows from spreadsheet")
+        self.covered_dates_by_name = {}
         shifts = []
         current_dates = []
         after_today = False
@@ -198,7 +212,14 @@ class RotaParser:
             date_count = 0
             for cell in row:
                 try:
-                    for date_format in ["%a %d %b", "%B %d", "%d %B", "%d/%m", "%d-%m", "%d-%b"]:
+                    for date_format in [
+                        "%a %d %b",
+                        "%B %d",
+                        "%d %B",
+                        "%d/%m",
+                        "%d-%m",
+                        "%d-%b",
+                    ]:
                         try:
                             datetime.strptime(cell.strip(), date_format)
                             date_count += 1
@@ -244,7 +265,9 @@ class RotaParser:
                             # Track the first date column
                             if first_date_column is None:
                                 first_date_column = col_idx
-                                logger.info(f"First date found in column {first_date_column}")
+                                logger.info(
+                                    f"First date found in column {first_date_column}"
+                                )
 
                             current_date = datetime.now()
                             target_date = parsed_date.replace(year=current_date.year)
@@ -279,7 +302,9 @@ class RotaParser:
             if first_date_column is not None and first_date_column > 0:
                 for col_idx in range(first_date_column):
                     if col_idx < len(row) and row[col_idx].strip():
-                        candidate_name = "".join(char for char in row[col_idx] if char.isalpha())
+                        candidate_name = "".join(
+                            char for char in row[col_idx] if char.isalpha()
+                        )
                         if candidate_name:
                             name = candidate_name
                             logger.info(f"Found name '{name}' in column {col_idx}")
@@ -292,7 +317,16 @@ class RotaParser:
                 else:
                     continue
 
-            logger.info(f"Processing shifts for name: '{name}' from row: {row[:min(len(row), 5)]}")
+            logger.info(
+                f"Processing shifts for name: '{name}' from row: {row[: min(len(row), 5)]}"
+            )
+
+            covered_dates = self.covered_dates_by_name.setdefault(name.lower(), set())
+            covered_dates.update(
+                current_date.strftime("%Y-%m-%d")
+                for current_date in current_dates
+                if current_date is not None
+            )
 
             for i, shift_data in enumerate(row):
                 if i >= len(current_dates) or not current_dates[i]:
@@ -434,6 +468,7 @@ class GoogleCalendarManager:
         timezone: str,
         description: Optional[str] = None,
         location: Optional[str] = None,
+        private_properties: Optional[Dict[str, str]] = None,
     ) -> Optional[Dict[str, Any]]:
         """Create a new calendar event."""
         event_body = {
@@ -452,6 +487,8 @@ class GoogleCalendarManager:
             event_body["description"] = description
         if location:
             event_body["location"] = location
+        if private_properties:
+            event_body["extendedProperties"] = {"private": private_properties}
 
         try:
             created_event = (
@@ -465,27 +502,61 @@ class GoogleCalendarManager:
             logger.error(f"An error occurred: {error}")
             return None
 
-    def get_events_date(self, date: datetime) -> Optional[List[Dict[str, Any]]]:
+    def get_events_date(
+        self, date: datetime, timezone: str = "Europe/Dublin"
+    ) -> List[Dict[str, Any]]:
         """Get events for a specific date."""
         try:
             start_datetime = datetime.combine(date, datetime.min.time())
-            end_datetime = datetime.combine(date, datetime.max.time())
+            end_datetime = start_datetime + timedelta(days=1)
+            events = []
+            page_token = None
 
-            events_result = (
-                self.service.events()
-                .list(
-                    calendarId=self.calendar_id,
-                    timeMin=start_datetime.isoformat() + "Z",
-                    timeMax=end_datetime.isoformat() + "Z",
-                    singleEvents=True,
-                    orderBy="startTime",
+            while True:
+                events_result = (
+                    self.service.events()
+                    .list(
+                        calendarId=self.calendar_id,
+                        timeMin=self._format_datetime(start_datetime, timezone),
+                        timeMax=self._format_datetime(end_datetime, timezone),
+                        singleEvents=True,
+                        orderBy="startTime",
+                        pageToken=page_token,
+                    )
+                    .execute()
                 )
-                .execute()
-            )
-            return events_result.get("items", [])
+                events.extend(events_result.get("items", []))
+                page_token = events_result.get("nextPageToken")
+                if not page_token:
+                    return events
         except HttpError as error:
             logger.error(f"An error occurred: {error}")
-            return None
+            raise
+
+    def list_events(self) -> List[Dict[str, Any]]:
+        """List every non-deleted event in the selected calendar."""
+        try:
+            events = []
+            page_token = None
+
+            while True:
+                events_result = (
+                    self.service.events()
+                    .list(
+                        calendarId=self.calendar_id,
+                        showDeleted=False,
+                        maxResults=2500,
+                        pageToken=page_token,
+                    )
+                    .execute()
+                )
+                events.extend(events_result.get("items", []))
+                page_token = events_result.get("nextPageToken")
+                if not page_token:
+                    return events
+        except HttpError as error:
+            logger.error(f"An error occurred while listing calendar events: {error}")
+            raise
 
     def delete_event(self, event_id: str) -> bool:
         """Delete a calendar event."""
@@ -511,15 +582,13 @@ class GoogleCalendarManager:
 
 
 def get_service_account_file() -> str:
-    """Retrieve the service account file path from environment variables."""
-    service_account_file = os.environ.get("SERVICE_ACCOUNT_FILE")
-    if not service_account_file:
-        logger.error("Error: The SERVICE_ACCOUNT_FILE environment variable is not set.")
-        exit(1)
-    return service_account_file
+    """Retrieve the configured service account file path."""
+    return os.environ.get("SERVICE_ACCOUNT_FILE", DEFAULT_SERVICE_ACCOUNT_FILE)
 
 
-def initialize_calendar(calendar_manager: GoogleCalendarManager, calendar_name: str) -> None:
+def initialize_calendar(
+    calendar_manager: GoogleCalendarManager, calendar_name: str
+) -> None:
     """Initialize the Google Calendar, creating it if it doesn't exist."""
     calendars = calendar_manager.list_calendars()
     # Find calendar with matching name
@@ -555,141 +624,187 @@ def share_calendar_with_users(
             logger.info(f"Shared calendar with {email}")
 
 
-def process_shifts(
-    calendar_manager: GoogleCalendarManager, parsed_rota: List[Dict], user_names: List[str]
+def is_swap_event(event: Dict[str, Any], user_names: List[str]) -> bool:
+    """Return whether an event was created by this or an older S.W.A.P. version."""
+    private_properties = event.get("extendedProperties", {}).get("private", {})
+    if private_properties.get(SWAP_EVENT_PROPERTY) == SWAP_EVENT_PROPERTY_VALUE:
+        return True
+
+    if not user_names:
+        return False
+
+    # Older versions did not tag events, but always started descriptions this way.
+    aliases = "|".join(re.escape(name) for name in user_names)
+    legacy_description = re.compile(
+        rf"^(?:{aliases})\s+-\s+\d{{4}}-\d{{2}}-\d{{2}}(?:\r?\n|$)",
+        re.IGNORECASE,
+    )
+    return bool(legacy_description.match(event.get("description", "")))
+
+
+def get_swap_event_date(event: Dict[str, Any], user_names: List[str]) -> Optional[str]:
+    """Read the source shift date from a current or legacy S.W.A.P. event."""
+    private_properties = event.get("extendedProperties", {}).get("private", {})
+    event_date = private_properties.get(SWAP_EVENT_DATE_PROPERTY)
+    if event_date and re.fullmatch(r"\d{4}-\d{2}-\d{2}", event_date):
+        return event_date
+
+    if not user_names:
+        return None
+
+    aliases = "|".join(re.escape(name) for name in user_names)
+    legacy_description = re.compile(
+        rf"^(?:{aliases})\s+-\s+(\d{{4}}-\d{{2}}-\d{{2}})(?:\r?\n|$)",
+        re.IGNORECASE,
+    )
+    match = legacy_description.match(event.get("description", ""))
+    return match.group(1) if match else None
+
+
+def _delete_event_or_raise(
+    calendar_manager: GoogleCalendarManager, event_id: str
 ) -> None:
-    """Process and add shifts to the calendar."""
-    # Normalize user names to lowercase for case-insensitive comparison
-    normalized_user_names = [name.lower() for name in user_names]
-    filtered_shifts = [
-        shift for shift in parsed_rota
-        if shift["name"].lower() in normalized_user_names
+    if not calendar_manager.delete_event(event_id):
+        raise RuntimeError(f"Failed to delete calendar event {event_id}")
+
+
+def delete_swap_events(
+    calendar_manager: GoogleCalendarManager, user_names: List[str]
+) -> int:
+    """Delete all current and legacy S.W.A.P. events from a calendar."""
+    deleted_count = 0
+    for event in calendar_manager.list_events():
+        if not is_swap_event(event, user_names):
+            continue
+
+        logger.info(
+            "Deleting S.W.A.P. event during overwrite: %s",
+            event.get("summary", event.get("id")),
+        )
+        _delete_event_or_raise(calendar_manager, event["id"])
+        deleted_count += 1
+
+    return deleted_count
+
+
+def _event_matches(event: Dict[str, Any], summary: str, description: str) -> bool:
+    return event.get("summary") == summary and event.get("description") == description
+
+
+def _sync_shift_event(
+    calendar_manager: GoogleCalendarManager,
+    shift: Dict[str, Any],
+    user_names: List[str],
+) -> None:
+    """Create or replace the managed event for one shift."""
+    shift_date = datetime.strptime(shift["date"], "%Y-%m-%d").date()
+    current_events = calendar_manager.get_events_date(shift_date) or []
+    managed_events = [
+        event
+        for event in current_events
+        if is_swap_event(event, user_names)
+        and get_swap_event_date(event, user_names) == shift["date"]
     ]
-    filtered_shifts.sort(key=lambda x: x["date"], reverse=True)
+    description = f"{shift['name']} - {shift['date']}\n{shift['raw_data']}"
 
-    # Process only the latest 100 shifts
-    for shift in filtered_shifts[:100]:
-        shift_date = datetime.strptime(shift["date"], "%Y-%m-%d").date()
-        current_events = calendar_manager.get_events_date(shift_date) or []
-
-        # Handle non-working days by creating an all-day event
-        if not shift["is_working"]:
-            summary = f"{shift['shift_type'].replace('_', ' ').title()}"
-            description = f"{shift['name']} - {shift['date']}\n{shift['raw_data']}"
-            start_time = datetime.combine(shift_date, datetime.min.time())
-            end_time = start_time + timedelta(days=1)
-
-            # Check if event already exists and is identical
-            event_exists = False
-            if current_events and len(current_events) == 1:
-                existing_event = current_events[0]
-                if (
-                    existing_event.get("summary") == summary
-                    and existing_event.get("description") == description
-                ):
-                    event_exists = True
-                    logger.info(
-                        f"All-day event already exists for {shift['date']}, skipping"
-                    )
-
-            # Remove old events if they exist and are different
-            if current_events and not event_exists:
-                for event in current_events:
-                    logger.info(f"Deleting outdated event for {shift['date']}")
-                    calendar_manager.delete_event(event["id"])
-
-            # Create new all-day event if it doesn't exist or is different
-            if not event_exists:
-                logger.info(
-                    f"Creating new all-day event for {shift['date']}: {summary}"
-                )
-                calendar_manager.create_event(
-                    summary=summary,
-                    description=description,
-                    start_time=start_time,
-                    end_time=end_time,
-                    timezone="Europe/Dublin",
-                )
-            continue
-
-        # Handle working shifts without specific times (like training) as all-day events
-        if "start_date" not in shift or "end_date" not in shift:
-            summary = f"{shift['shift_type'].replace('_', ' ').title()}"
-            description = f"{shift['name']} - {shift['date']}\n{shift['raw_data']}"
-            start_time = datetime.combine(shift_date, datetime.min.time())
-            end_time = start_time + timedelta(days=1)
-
-            # Check if event already exists and is identical
-            event_exists = False
-            if current_events and len(current_events) == 1:
-                existing_event = current_events[0]
-                if (
-                    existing_event.get("summary") == summary
-                    and existing_event.get("description") == description
-                ):
-                    event_exists = True
-                    logger.info(
-                        f"All-day working event already exists for {shift['date']}, skipping"
-                    )
-
-            # Remove old events if they exist and are different
-            if current_events and not event_exists:
-                for event in current_events:
-                    logger.info(f"Deleting outdated event for {shift['date']}")
-                    calendar_manager.delete_event(event["id"])
-
-            # Create new all-day event if it doesn't exist or is different
-            if not event_exists:
-                logger.info(
-                    f"Creating new all-day working event for {shift['date']}: {summary}"
-                )
-                calendar_manager.create_event(
-                    summary=summary,
-                    description=description,
-                    start_time=start_time,
-                    end_time=end_time,
-                    timezone="Europe/Dublin",
-                )
-            continue
-
-        # Prepare event details
+    if "start_date" in shift and "end_date" in shift:
         start_time = datetime.strptime(shift["start_date"], "%Y-%m-%d %H:%M:%S")
         end_time = datetime.strptime(shift["end_date"], "%Y-%m-%d %H:%M:%S")
-        summary = f"🏥 Work ({start_time.strftime('%H:%M')} - {end_time.strftime('%H:%M')})"
-        description = f"{shift['name']} - {shift['date']}\n{shift['raw_data']}"
+        summary = (
+            f"🏥 Work ({start_time.strftime('%H:%M')} - {end_time.strftime('%H:%M')})"
+        )
+    else:
+        start_time = datetime.combine(shift_date, datetime.min.time())
+        end_time = start_time + timedelta(days=1)
+        summary = shift["shift_type"].replace("_", " ").title()
 
-        # Check if event already exists and is identical
-        event_exists = False
-        if current_events and len(current_events) == 1:
-            existing_event = current_events[0]
+    matching_events = [
+        event for event in managed_events if _event_matches(event, summary, description)
+    ]
+    event_to_keep = matching_events[0] if matching_events else None
+
+    for event in managed_events:
+        if event_to_keep and event["id"] == event_to_keep["id"]:
+            continue
+        logger.info(f"Deleting outdated event for {shift['date']}")
+        _delete_event_or_raise(calendar_manager, event["id"])
+
+    if event_to_keep:
+        logger.info(f"Event already exists for {shift['date']}, skipping")
+        return
+
+    logger.info(f"Creating new event for {shift['date']}: {summary}")
+    private_properties = {
+        **SWAP_EVENT_PROPERTIES,
+        SWAP_EVENT_DATE_PROPERTY: shift["date"],
+    }
+    created_event = calendar_manager.create_event(
+        summary=summary,
+        description=description,
+        start_time=start_time,
+        end_time=end_time,
+        timezone="Europe/Dublin",
+        private_properties=private_properties,
+    )
+    if not created_event:
+        raise RuntimeError(f"Failed to create calendar event for {shift['date']}")
+
+
+def process_shifts(
+    calendar_manager: GoogleCalendarManager,
+    parsed_rota: List[Dict],
+    user_names: List[str],
+    covered_dates: Optional[Set[str]] = None,
+) -> None:
+    """Reconcile the user's shifts and blank rota dates with the calendar."""
+    normalized_user_names = [name.lower() for name in user_names]
+    filtered_shifts = [
+        shift for shift in parsed_rota if shift["name"].lower() in normalized_user_names
+    ]
+    filtered_shifts.sort(key=lambda shift: shift["date"], reverse=True)
+
+    for shift in filtered_shifts:
+        _sync_shift_event(calendar_manager, shift, user_names)
+
+    shift_dates = {shift["date"] for shift in filtered_shifts}
+    for empty_date in sorted((covered_dates or set()) - shift_dates):
+        date = datetime.strptime(empty_date, "%Y-%m-%d").date()
+        current_events = calendar_manager.get_events_date(date) or []
+        for event in current_events:
             if (
-                existing_event.get("summary") == summary
-                and existing_event.get("description") == description
+                not is_swap_event(event, user_names)
+                or get_swap_event_date(event, user_names) != empty_date
             ):
-                event_exists = True
-                logger.info(f"Event already exists for {shift['date']}, skipping")
+                continue
+            logger.info(f"Deleting event from blank rota date {empty_date}")
+            _delete_event_or_raise(calendar_manager, event["id"])
 
-        # Remove old events if they exist and are different
-        if current_events and not event_exists:
-            for event in current_events:
-                logger.info(f"Deleting outdated event for {shift['date']}")
-                calendar_manager.delete_event(event["id"])
 
-        # Create new event if it doesn't exist or is different
-        if not event_exists:
-            logger.info(f"Creating new event for {shift['date']}: {summary}")
-            calendar_manager.create_event(
-                summary=summary,
-                description=description,
-                start_time=start_time,
-                end_time=end_time,
-                timezone="Europe/Dublin",
-            )
+def _environment_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Sync work shifts from Google Sheets to Google Calendar."
+    )
+    parser.add_argument(
+        "--overwrite-events",
+        action="store_true",
+        default=_environment_flag("SWAP_OVERWRITE_EVENTS"),
+        help=(
+            "delete all S.W.A.P.-managed and recognizable legacy events before "
+            "rebuilding the calendar"
+        ),
+    )
+    return parser.parse_args()
 
 
 def main() -> None:
     """Main function to orchestrate the rota parsing and calendar management."""
     try:
+        args = parse_args()
+
         # Get service account file
         service_account_file = get_service_account_file()
         logger.info(f"Using service account file: {service_account_file}")
@@ -714,9 +829,16 @@ def main() -> None:
             # Normalize user names for case-insensitive comparison
             normalized_user_names = [name.lower() for name in user_names]
             user_shifts = [
-                shift for shift in parsed_rota
+                shift
+                for shift in parsed_rota
                 if shift["name"].lower() in normalized_user_names
             ]
+            covered_dates = set().union(
+                *(
+                    parser.covered_dates_by_name.get(name, set())
+                    for name in normalized_user_names
+                )
+            )
             logger.info(f"Found {len(user_shifts)} shifts for {', '.join(user_names)}")
 
             # Initialize calendar manager
@@ -731,9 +853,26 @@ def main() -> None:
             # Ensure calendars are shared on every run (quick check already implemented)
             share_calendar_with_users(calendar_manager, emails_to_share)
 
+            if args.overwrite_events:
+                logger.info(
+                    "Overwrite enabled; deleting existing S.W.A.P. events from %s",
+                    calendar_name,
+                )
+                deleted_count = delete_swap_events(calendar_manager, user_names)
+                logger.info(
+                    "Deleted %d existing S.W.A.P. events from %s",
+                    deleted_count,
+                    calendar_name,
+                )
+
             # Process and update shifts
             logger.info(f"Processing shifts for {', '.join(user_names)}")
-            process_shifts(calendar_manager, parsed_rota, user_names)
+            process_shifts(
+                calendar_manager,
+                parsed_rota,
+                user_names,
+                covered_dates=covered_dates,
+            )
 
         logger.info("Calendar sync completed successfully")
 

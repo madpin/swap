@@ -53,14 +53,39 @@ git clone https://github.com/madpin/swap.git
 cd swap
 pip install -r requirements.txt
 
-# Set your credentials 
-export SERVICE_ACCOUNT_FILE='/path/to/service-account.json'
+# The script uses this path by default.
+export SERVICE_ACCOUNT_FILE='/Users/tpinto/madpin/swap/service-account.json'
 
 # Run it!
 python aio.py
 ```
 
 That's it! Your work schedule syncs automatically. 🎉🙌
+
+### Replace events from an old rota
+
+When switching to a different rota file, run one full overwrite:
+
+```bash
+python aio.py --overwrite-events
+```
+
+This deletes events created by S.W.A.P., including events from versions that
+predate ownership tagging, then rebuilds the calendar from the current sheet.
+Other calendar events are left unchanged. Normal runs also remove old S.W.A.P.
+events from dates that are present in the rota but blank for that user.
+
+For Docker or cron, set the equivalent environment variable:
+
+```bash
+docker run --rm \
+  -e SWAP_OVERWRITE_EVENTS=true \
+  -v /Users/tpinto/madpin/swap/service-account.json:/app/service-account.json:ro \
+  ghcr.io/madpin/swap
+```
+
+Use overwrite only for the first run after changing rota files; subsequent runs
+can use the normal command.
 
 ---
 
@@ -75,7 +100,7 @@ docker pull ghcr.io/madpin/swap
 
 # Run the container with your service account
 docker run \
-  -v /root/.config/swap/madpin-08b601161bcb.json:/app/service-account.json:ro \
+  -v /Users/tpinto/madpin/swap/service-account.json:/app/service-account.json:ro \
   ghcr.io/madpin/swap
 ```
 
@@ -98,7 +123,7 @@ mkdir -p /root/.config/swap/logs
 crontab -e
 
 # Add this line to run daily at 6:00 AM
-0 6 * * * docker run --rm -v /root/.config/swap/madpin-08b601161bcb.json:/app/service-account.json:ro ghcr.io/madpin/swap >> /root/.config/swap/logs/swap-$(date +\%Y\%m\%d).log 2>&1
+0 6 * * * docker run --rm -v /Users/tpinto/madpin/swap/service-account.json:/app/service-account.json:ro ghcr.io/madpin/swap >> /root/.config/swap/logs/swap-$(date +\%Y\%m\%d).log 2>&1
 ```
 
 This will:

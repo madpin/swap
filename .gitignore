@@ -1,2 +1,5 @@
 madpin-14bd25c3d9fa.json
+service-account.json
+__pycache__/
+*.py[cod]
 .env
