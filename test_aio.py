@@ -1,13 +1,23 @@
 import unittest
-from datetime import date
+from datetime import date, datetime, timedelta
 
 from aio import (
+    RotaParser,
     SWAP_EVENT_DATE_PROPERTY,
     SWAP_EVENT_PROPERTIES,
     delete_swap_events,
     is_swap_event,
     process_shifts,
 )
+
+
+class FakeSpreadsheetReader:
+    def __init__(self, rows, strikethrough_cells):
+        self.rows = rows
+        self.strikethrough_cells = strikethrough_cells
+
+    def read_sheet(self, spreadsheet_id, range_name):
+        return self.rows
 
 
 class FakeCalendarManager:
@@ -207,6 +217,34 @@ class SwapEventTests(unittest.TestCase):
 
         self.assertEqual(manager.deleted_event_ids, ["duplicate"])
         self.assertEqual(manager.created_events, [])
+
+
+class RotaParserFormattingTests(unittest.TestCase):
+    def test_crossed_out_shift_is_removed_but_crossed_out_date_is_ignored(self):
+        start_date = datetime.now() + timedelta(days=7)
+        dates = [start_date + timedelta(days=offset) for offset in range(7)]
+        rows = [
+            ["", *(rota_date.strftime("%d-%b") for rota_date in dates)],
+            ["RACHEL", "1000-2200", "1000-2200"],
+        ]
+        parser = RotaParser.__new__(RotaParser)
+        parser.reader = FakeSpreadsheetReader(
+            rows,
+            {
+                (1, 1),  # Crossed-out shift: reconcile this date as blank.
+                (0, 2),  # Crossed-out header: ignore this date completely.
+            },
+        )
+        parser.spreadsheet_id = "test"
+        parser.range_name = "Sheet1!A:H"
+        parser.covered_dates_by_name = {}
+
+        shifts = parser.parse_rota()
+        covered_dates = parser.covered_dates_by_name["rachel"]
+
+        self.assertNotIn(dates[0].strftime("%Y-%m-%d"), {s["date"] for s in shifts})
+        self.assertIn(dates[0].strftime("%Y-%m-%d"), covered_dates)
+        self.assertNotIn(dates[1].strftime("%Y-%m-%d"), covered_dates)
 
 
 if __name__ == "__main__":

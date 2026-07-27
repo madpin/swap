@@ -81,6 +81,7 @@ class GoogleSpreadsheetReader:
     def __init__(self, service_account_file: str):
         self.service_account_file = service_account_file
         self.service = self._build_service()
+        self.strikethrough_cells: Set[Tuple[int, int]] = set()
 
     def _build_service(self):
         """Build and return a Sheets service object."""
@@ -102,10 +103,68 @@ class GoogleSpreadsheetReader:
                 .get(spreadsheetId=spreadsheet_id, range=range_name)
                 .execute()
             )
-            return result.get("values", [])
+            values = result.get("values", [])
+            self.strikethrough_cells = self._read_strikethrough_cells(
+                spreadsheet_id,
+                self._limit_open_ended_range(range_name, len(values)),
+            )
+            return values
         except HttpError as err:
             logger.error(f"Error reading from spreadsheet: {err}")
             raise
+
+    def _read_strikethrough_cells(
+        self, spreadsheet_id: str, range_name: str
+    ) -> Set[Tuple[int, int]]:
+        """Return zero-based coordinates for cells formatted with strikethrough."""
+        result = (
+            self.service.spreadsheets()
+            .get(
+                spreadsheetId=spreadsheet_id,
+                ranges=[range_name],
+                includeGridData=True,
+                fields=(
+                    "sheets(data(startRow,startColumn,rowData(values("
+                    "effectiveFormat(textFormat(strikethrough))))))"
+                ),
+            )
+            .execute()
+        )
+
+        strikethrough_cells = set()
+        for sheet in result.get("sheets", []):
+            for grid_data in sheet.get("data", []):
+                start_row = grid_data.get("startRow", 0)
+                start_column = grid_data.get("startColumn", 0)
+                for row_offset, row in enumerate(grid_data.get("rowData", [])):
+                    for column_offset, cell in enumerate(row.get("values", [])):
+                        is_struck = (
+                            cell.get("effectiveFormat", {})
+                            .get("textFormat", {})
+                            .get("strikethrough", False)
+                        )
+                        if is_struck:
+                            strikethrough_cells.add(
+                                (
+                                    start_row + row_offset,
+                                    start_column + column_offset,
+                                )
+                            )
+        return strikethrough_cells
+
+    @staticmethod
+    def _limit_open_ended_range(range_name: str, row_count: int) -> str:
+        """Cap a column-only A1 range to rows returned by the values API."""
+        match = re.fullmatch(
+            r"(?P<sheet>.*!)(?P<start>[A-Z]+):(?P<end>[A-Z]+)",
+            range_name,
+        )
+        if not match or row_count == 0:
+            return range_name
+        return (
+            f"{match.group('sheet')}{match.group('start')}1:"
+            f"{match.group('end')}{row_count}"
+        )
 
 
 class RotaParser:
@@ -234,7 +293,9 @@ class RotaParser:
         # Track the column index where the first date appears
         first_date_column = None
 
-        for row in data:
+        strikethrough_cells = self.reader.strikethrough_cells
+
+        for row_index, row in enumerate(data):
             if not row or len(row) < 3:
                 continue
 
@@ -244,6 +305,15 @@ class RotaParser:
                 first_date_column = None  # Reset for each date row
 
                 for col_idx, date_str in enumerate(row):
+                    if (row_index, col_idx) in strikethrough_cells:
+                        logger.info(
+                            "Ignoring crossed-out date in row %d, column %d",
+                            row_index + 1,
+                            col_idx + 1,
+                        )
+                        current_dates.append(None)
+                        continue
+
                     try:
                         parsed_date = None
                         for date_format in [
@@ -335,6 +405,14 @@ class RotaParser:
 
                 current_date = current_dates[i]
                 shift_data = shift_data.strip()
+
+                if (row_index, i) in strikethrough_cells:
+                    logger.info(
+                        "Ignoring crossed-out shift for %s on %s",
+                        name,
+                        current_date.strftime("%Y-%m-%d"),
+                    )
+                    continue
 
                 shift_entry = {
                     "name": name,
